@@ -181,7 +181,7 @@ void destroy_ctx(SSL_CTX *ctx)
 	SSL_CTX_free(ctx);
 }
 
-int ssl_set_fds(ssl_info *info, 
+static int ssl_set_fds_action(ssl_info *info, wait_event *m_event, 
 	int maxfd, fd_set *rfds, fd_set *wfds)
 {
 	int update_maxfd;
@@ -190,18 +190,12 @@ int ssl_set_fds(ssl_info *info,
 	update_maxfd = 0;
 	ret_maxfd = maxfd;
 
-	if(info->recv.write || 
-	info->connect.write || 
-	info->send.write || 
-	info->accept.write){
+	if(m_event->write){
 		update_maxfd = 1;
 		FD_SET(info->sk, wfds);
 	}
 
-	if(info->recv.read || 
-	info->connect.read || 
-	info->send.read || 
-	info->accept.read){
+	if(m_event->read){
 		update_maxfd = 1;
 		FD_SET(info->sk, rfds);
 	}
@@ -209,6 +203,18 @@ int ssl_set_fds(ssl_info *info,
 	if(update_maxfd){
 		ret_maxfd = (maxfd > info->sk)?(maxfd):(info->sk);
 	}
+
+	return ret_maxfd;
+}
+
+int ssl_set_fds(ssl_info *info, 
+	int maxfd, fd_set *rfds, fd_set *wfds)
+{
+	int ret_maxfd;
+	ret_maxfd = ssl_set_fds_action(info, &info->recv, maxfd, rfds, wfds);
+	ret_maxfd = ssl_set_fds_action(info, &info->connect, ret_maxfd, rfds, wfds);
+	ret_maxfd = ssl_set_fds_action(info, &info->send, ret_maxfd, rfds, wfds);
+	ret_maxfd = ssl_set_fds_action(info, &info->accept, ret_maxfd, rfds, wfds);
 
 	return ret_maxfd;
 }
@@ -399,7 +405,7 @@ int ssl_##ACTION##_simple_tv(ssl_info * info, ##__VA_ARGS__, struct timeval * tv
 		FD_ZERO(&rfds);\
 		FD_ZERO(&wfds);\
 		\
-		ssl_set_fds(info, 0, &rfds, &wfds);\
+		ssl_set_fds_action(info, &(info->ACTION), 0, &rfds, &wfds);\
 		sel = select( info->sk + 1, &rfds, &wfds, 0, tv);\
 		\
 	}while(sel > 0);\
