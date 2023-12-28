@@ -210,11 +210,31 @@ static int ssl_set_fds_action(ssl_info *info, wait_event *m_event,
 int ssl_set_fds(ssl_info *info, 
 	int maxfd, fd_set *rfds, fd_set *wfds)
 {
+	int update_maxfd;
 	int ret_maxfd;
-	ret_maxfd = ssl_set_fds_action(info, &info->recv, maxfd, rfds, wfds);
-	ret_maxfd = ssl_set_fds_action(info, &info->connect, ret_maxfd, rfds, wfds);
-	ret_maxfd = ssl_set_fds_action(info, &info->send, ret_maxfd, rfds, wfds);
-	ret_maxfd = ssl_set_fds_action(info, &info->accept, ret_maxfd, rfds, wfds);
+
+	update_maxfd = 0;
+	ret_maxfd = maxfd;
+
+	if(info->recv.write || 
+	info->connect.write || 
+	info->send.write || 
+	info->accept.write){
+		update_maxfd = 1;
+		FD_SET(info->sk, wfds);
+	}
+
+	if(info->recv.read || 
+	info->connect.read || 
+	info->send.read || 
+	info->accept.read){
+		update_maxfd = 1;
+		FD_SET(info->sk, rfds);
+	}
+
+	if(update_maxfd){
+		ret_maxfd = (maxfd > info->sk)?(maxfd):(info->sk);
+	}
 
 	return ret_maxfd;
 }
